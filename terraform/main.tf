@@ -16,43 +16,30 @@ provider "aws" {
   region = var.aws_region
 }
 
-# ── DynamoDB Tables ──────────────────────────────────────────
 resource "aws_dynamodb_table" "items" {
   name         = "${var.project_name}-items-${var.environment}"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "itemId"
-
   attribute {
     name = "itemId"
     type = "S"
   }
-
-  tags = {
-    Project     = var.project_name
-    Environment = var.environment
-  }
+  tags = { Project = var.project_name, Environment = var.environment }
 }
 
 resource "aws_dynamodb_table" "orders" {
   name         = "${var.project_name}-orders-${var.environment}"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "orderId"
-
   attribute {
     name = "orderId"
     type = "S"
   }
-
-  tags = {
-    Project     = var.project_name
-    Environment = var.environment
-  }
+  tags = { Project = var.project_name, Environment = var.environment }
 }
 
-# ── IAM Role for Lambda ───────────────────────────────────────
 resource "aws_iam_role" "lambda_exec" {
   name = "${var.project_name}-lambda-role-${var.environment}"
-
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -66,39 +53,24 @@ resource "aws_iam_role" "lambda_exec" {
 resource "aws_iam_role_policy" "lambda_dynamodb" {
   name = "${var.project_name}-lambda-dynamodb-policy"
   role = aws_iam_role.lambda_exec.id
-
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
         Effect = "Allow"
-        Action = [
-          "dynamodb:GetItem",
-          "dynamodb:PutItem",
-          "dynamodb:UpdateItem",
-          "dynamodb:DeleteItem",
-          "dynamodb:Scan",
-          "dynamodb:Query"
-        ]
-        Resource = [
-          aws_dynamodb_table.items.arn,
-          aws_dynamodb_table.orders.arn
-        ]
+        Action = ["dynamodb:GetItem","dynamodb:PutItem","dynamodb:UpdateItem",
+                  "dynamodb:DeleteItem","dynamodb:Scan","dynamodb:Query"]
+        Resource = [aws_dynamodb_table.items.arn, aws_dynamodb_table.orders.arn]
       },
       {
-        Effect = "Allow"
-        Action = [
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents"
-        ]
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogGroup","logs:CreateLogStream","logs:PutLogEvents"]
         Resource = "arn:aws:logs:*:*:*"
       }
     ]
   })
 }
 
-# ── Lambda Functions ──────────────────────────────────────────
 data "archive_file" "items_zip" {
   type        = "zip"
   source_dir  = "${path.module}/../src/items"
@@ -119,18 +91,12 @@ resource "aws_lambda_function" "items" {
   runtime          = "python3.11"
   source_code_hash = data.archive_file.items_zip.output_base64sha256
   timeout          = 30
-
   environment {
     variables = {
       ITEMS_TABLE  = aws_dynamodb_table.items.name
       ORDERS_TABLE = aws_dynamodb_table.orders.name
       ENVIRONMENT  = var.environment
     }
-  }
-
-  tags = {
-    Project     = var.project_name
-    Environment = var.environment
   }
 }
 
@@ -142,7 +108,6 @@ resource "aws_lambda_function" "orders" {
   runtime          = "python3.11"
   source_code_hash = data.archive_file.orders_zip.output_base64sha256
   timeout          = 30
-
   environment {
     variables = {
       ITEMS_TABLE  = aws_dynamodb_table.items.name
@@ -150,14 +115,8 @@ resource "aws_lambda_function" "orders" {
       ENVIRONMENT  = var.environment
     }
   }
-
-  tags = {
-    Project     = var.project_name
-    Environment = var.environment
-  }
 }
 
-# ── CloudWatch Log Groups ─────────────────────────────────────
 resource "aws_cloudwatch_log_group" "items_logs" {
   name              = "/aws/lambda/${aws_lambda_function.items.function_name}"
   retention_in_days = 14
@@ -168,7 +127,6 @@ resource "aws_cloudwatch_log_group" "orders_logs" {
   retention_in_days = 14
 }
 
-# ── API Gateway ───────────────────────────────────────────────
 resource "aws_api_gateway_rest_api" "erp_api" {
   name        = "${var.project_name}-api-${var.environment}"
   description = "ERP Inventory & Order Management API"
@@ -198,13 +156,14 @@ resource "aws_api_gateway_resource" "order_id" {
   path_part   = "{orderId}"
 }
 
-# Items methods
+data "aws_caller_identity" "current" {}
+
 module "items_get" {
   source      = "./modules/api_method"
   rest_api_id = aws_api_gateway_rest_api.erp_api.id
   resource_id = aws_api_gateway_resource.items.id
   http_method = "GET"
-  lambda_arn  = aws_lambda_function.items.invoke_arn
+  lambda_arn  = aws_lambda_function.items.arn
   lambda_name = aws_lambda_function.items.function_name
   aws_region  = var.aws_region
   account_id  = data.aws_caller_identity.current.account_id
@@ -215,7 +174,7 @@ module "items_post" {
   rest_api_id = aws_api_gateway_rest_api.erp_api.id
   resource_id = aws_api_gateway_resource.items.id
   http_method = "POST"
-  lambda_arn  = aws_lambda_function.items.invoke_arn
+  lambda_arn  = aws_lambda_function.items.arn
   lambda_name = aws_lambda_function.items.function_name
   aws_region  = var.aws_region
   account_id  = data.aws_caller_identity.current.account_id
@@ -226,19 +185,18 @@ module "item_put" {
   rest_api_id = aws_api_gateway_rest_api.erp_api.id
   resource_id = aws_api_gateway_resource.item_id.id
   http_method = "PUT"
-  lambda_arn  = aws_lambda_function.items.invoke_arn
+  lambda_arn  = aws_lambda_function.items.arn
   lambda_name = aws_lambda_function.items.function_name
   aws_region  = var.aws_region
   account_id  = data.aws_caller_identity.current.account_id
 }
 
-# Orders methods
 module "orders_post" {
   source      = "./modules/api_method"
   rest_api_id = aws_api_gateway_rest_api.erp_api.id
   resource_id = aws_api_gateway_resource.orders.id
   http_method = "POST"
-  lambda_arn  = aws_lambda_function.orders.invoke_arn
+  lambda_arn  = aws_lambda_function.orders.arn
   lambda_name = aws_lambda_function.orders.function_name
   aws_region  = var.aws_region
   account_id  = data.aws_caller_identity.current.account_id
@@ -249,7 +207,7 @@ module "order_get" {
   rest_api_id = aws_api_gateway_rest_api.erp_api.id
   resource_id = aws_api_gateway_resource.order_id.id
   http_method = "GET"
-  lambda_arn  = aws_lambda_function.orders.invoke_arn
+  lambda_arn  = aws_lambda_function.orders.arn
   lambda_name = aws_lambda_function.orders.function_name
   aws_region  = var.aws_region
   account_id  = data.aws_caller_identity.current.account_id
@@ -257,18 +215,11 @@ module "order_get" {
 
 resource "aws_api_gateway_deployment" "erp_api" {
   rest_api_id = aws_api_gateway_rest_api.erp_api.id
-
   depends_on = [
-    module.items_get,
-    module.items_post,
-    module.item_put,
-    module.orders_post,
-    module.order_get
+    module.items_get, module.items_post, module.item_put,
+    module.orders_post, module.order_get
   ]
-
-  lifecycle {
-    create_before_destroy = true
-  }
+  lifecycle { create_before_destroy = true }
 }
 
 resource "aws_api_gateway_stage" "erp_api" {
@@ -276,5 +227,3 @@ resource "aws_api_gateway_stage" "erp_api" {
   rest_api_id   = aws_api_gateway_rest_api.erp_api.id
   stage_name    = var.environment
 }
-
-data "aws_caller_identity" "current" {}
