@@ -42,7 +42,7 @@ def test_create_order_success(mock_items, mock_orders):
     assert response["statusCode"] == 201
     body = json.loads(response["body"])
     assert body["order"]["status"] == "confirmed"
-    assert body["order"]["totalAmount"] == 19.98
+    assert body["order"]["totalAmount"] == "19.98"
 
 
 @patch("handler.orders_table")
