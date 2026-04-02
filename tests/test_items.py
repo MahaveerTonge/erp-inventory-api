@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../src"))
 os.environ["ITEMS_TABLE"]  = "test-items"
 os.environ["ORDERS_TABLE"] = "test-orders"
 os.environ["ENVIRONMENT"]  = "test"
+os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
 
 
 def make_event(method, path="/items", body=None, path_params=None):
