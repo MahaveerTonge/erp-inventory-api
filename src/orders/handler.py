@@ -2,6 +2,7 @@ import json
 import os
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 
 import boto3
 from common.response import success, error
@@ -22,12 +23,9 @@ def lambda_handler(event, context):
         if method == "POST":
             body = json.loads(event.get("body") or "{}")
             return create_order(body)
-
         if method == "GET" and "orderId" in path_params:
             return get_order(path_params["orderId"])
-
         return error(404, "Route not found")
-
     except json.JSONDecodeError:
         return error(400, "Invalid JSON body")
     except Exception as e:
@@ -42,7 +40,7 @@ def create_order(body):
 
     line_items = body.get("lineItems", [])
     enriched_lines = []
-    total_amount = 0.0
+    total_amount = Decimal("0")
 
     for line in line_items:
         item_id  = line.get("itemId")
@@ -51,14 +49,13 @@ def create_order(body):
         db_item = items_table.get_item(Key={"itemId": item_id}).get("Item")
         if not db_item:
             return error(404, f"Item {item_id} not found in inventory")
-
         if db_item.get("status") != "active":
-            return error(400, f"Item {item_id} is not available for ordering")
-
+            return error(400, f"Item {item_id} is not available")
         if int(db_item.get("quantity", 0)) < quantity:
             return error(400, f"Insufficient stock for item {item_id}. Available: {db_item['quantity']}")
 
-        line_total = float(db_item["price"]) * quantity
+        unit_price = Decimal(str(db_item["price"]))
+        line_total = unit_price * quantity
         total_amount += line_total
 
         enriched_lines.append({
@@ -66,11 +63,10 @@ def create_order(body):
             "name":      db_item["name"],
             "sku":       db_item.get("sku", ""),
             "quantity":  quantity,
-            "unitPrice": float(db_item["price"]),
-            "lineTotal": round(line_total, 2),
+            "unitPrice": str(unit_price),
+            "lineTotal": str(line_total),
         })
 
-        # Deduct stock
         items_table.update_item(
             Key={"itemId": item_id},
             UpdateExpression="SET quantity = quantity - :qty, updatedAt = :ts",
@@ -84,7 +80,7 @@ def create_order(body):
         "orderId":     str(uuid.uuid4()),
         "customerId":  body.get("customerId", "guest"),
         "lineItems":   enriched_lines,
-        "totalAmount": round(total_amount, 2),
+        "totalAmount": str(total_amount),
         "status":      "confirmed",
         "notes":       body.get("notes", ""),
         "createdAt":   datetime.now(timezone.utc).isoformat(),
