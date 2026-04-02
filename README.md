@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 # ERP Inventory & Order Management API
 
 A production-grade serverless REST API for inventory and order management, deployed via a fully automated CI/CD pipeline.
@@ -118,7 +118,5 @@ erp-inventory-api/
 - **Stock validation** — Orders check inventory levels before confirming, deduct atomically
 - **Test gates** — Pipeline blocks deployment if tests fail or coverage drops below 80%
 =======
-# erp-inventory-api
-Sample Text TBD
 >>>>>>> ac97a3f68435c2deafa9ab1ac3064d5b71b13b06
 # trigger pipeline
